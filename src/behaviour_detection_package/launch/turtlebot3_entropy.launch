@@ -1,0 +1,90 @@
+<launch>
+    <!-- Fix GL Rendering Issues -->
+    <env name="LIBGL_ALWAYS_SOFTWARE" value="1" />
+    <env name="OGRE_RTT_MODE" value="Copy" />
+    <env name="DISPLAY" value=":0" />
+    
+    <!-- Turtlebot3 Parameters -->
+    <arg name="model" default="burger" />
+    <env name="TURTLEBOT3_MODEL" value="$(arg model)" />
+    
+    <arg name="world_path" default="$(find behaviour_detection_package)/worlds/Track.world" />
+    
+    <!-- Gazebo with Software Rendering -->
+    <include file="$(find gazebo_ros)/launch/empty_world.launch">
+        <arg name="world_name" value="$(arg world_path)" />
+        <arg name="paused" value="false" />
+        <arg name="use_sim_time" value="true" />
+        <arg name="gui" value="true" />
+        <arg name="headless" value="false" />
+        <arg name="debug" value="false" />
+        <env name="GAZEBO_GL" value="software" />
+    </include>
+    
+    <!-- Robot Description -->
+    <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find turtlebot3_description)/urdf/turtlebot3_$(arg model).urdf.xacro'" />
+    
+    <!-- Robot State Publisher -->
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" output="screen">
+        <param name="publish_frequency" type="double" value="50.0" />
+    </node>
+
+    <!-- Spawn Robot with Delay -->
+    <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" output="screen" 
+          args="-param robot_description -urdf -model turtlebot3_burger -x 4.57 -y -3.37 -z 0.1 -Y 3.14"
+          launch-prefix="bash -c 'sleep 5.0; $0 $@'" />
+
+    <!-- Core Nodes -->
+    <node name="entropy_calc_node" pkg="behaviour_detection_package" type="entropy_calc_node.py" output="screen" />
+    <node name="estimation_error_node" pkg="behaviour_detection_package" type="estimation_error_node.py" output="screen" />
+    <node name="phase_manager" pkg="behaviour_detection_package" type="phase_manager.py" output="screen" />
+
+    <!-- Joystick Control -->
+    <node name="joy_node" pkg="joy" type="joy_node" output="screen">
+        <param name="dev" value="/dev/input/js0" />
+        <param name="deadzone" value="0.1" />
+        <param name="autorepeat_rate" value="20" />
+    </node>
+
+    <node name="teleop_twist_joy" pkg="teleop_twist_joy" type="teleop_node" output="screen">
+        <param name="enable_button" value="0" />  
+        <param name="axis_linear" value="1" />    
+        <param name="axis_angular" value="0" />   
+        <param name="scale_linear" value="0.3" />
+        <param name="scale_angular" value="0.4" />
+        <remap from="cmd_vel" to="/cmd_vel" />
+    </node>
+    
+    <!-- Navigation Stack -->
+    <node name="map_server" pkg="map_server" type="map_server" args="$(find behaviour_detection_package)/maps/Track.yaml" output="screen" />
+    <include file="$(find turtlebot3_navigation)/launch/amcl.launch" />
+    
+    <!-- RViz with Software Rendering -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find behaviour_detection_package)/config/entropy_display.rviz" output="screen">
+        <env name="LIBGL_ALWAYS_SOFTWARE" value="1" />
+    </node>
+    
+    <!-- Initial Pose -->
+    <node pkg="rostopic" type="rostopic" name="set_initial_pose" args="pub -1 /initialpose geometry_msgs/PoseWithCovarianceStamped &quot;{
+          header: {frame_id: 'map'},
+          pose: {
+              pose: {
+                  position: {x: 7, y: -3, z: 0.0},
+                  orientation: {z: 1.0, w: 0.0}
+              },
+              covariance: [0.25, 0, 0, 0, 0, 0,
+                          0, 0.25, 0, 0, 0, 0,
+                          0, 0, 0, 0, 0, 0,
+                          0, 0, 0, 0, 0, 0,
+                          0, 0, 0, 0, 0, 0,
+                          0, 0, 0, 0, 0, 0.068]
+          }}&quot;" />
+
+    <!-- Phase GUI -->
+   <!-- <node name="trial_node" pkg="behaviour_detection_package" 
+          type="trial.py" output="screen"
+          args="--path $(find behaviour_detection_package)/scripts" /> -->
+    <node name="trial_node" pkg="behaviour_detection_package" type="trial.py" output="screen">
+    <param name="path" value="$(find behaviour_detection_package)/path_to_data" />
+<!--</node>-->
+</launch>
